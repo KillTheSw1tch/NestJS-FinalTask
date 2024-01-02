@@ -1,23 +1,31 @@
-// repository.model.ts
-import * as mongoose from 'mongoose'
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Document } from "mongoose";
 
-export const RepositorySchema = new mongoose.Schema({
-  link: {type: String, required: true},
-  api_url: {type: String, required: true},
-  commits_url: {type: String},
-  commitsCount: {type: Number},
-  pullRequests_url: {type: String},
-  pullRequestsCount: {type: String},
-  comment: {type: String},
-})
-
-export interface Repository {
-  id: string;
+@Schema()
+export class Repository extends Document {
+  @Prop({ required: true, unique: true })
   link: string;
-  commits_url: string;
-  commitsCount: number;
-  pullRequests_url: string;
-  pullRequestsCount: number;
+
+  @Prop()
+  id: string;
+
+  @Prop()
   api_url: string;
+
+  @Prop()
+  commits_url: string;
+
+  @Prop({ default: 0 })
+  commitsCount: number;
+
+  @Prop()
+  pullRequests_url: string;
+
+  @Prop({ default: 0 })
+  pullRequestsCount: number;
+
+  @Prop()
   comment: string;
 }
+
+export const RepositorySchema = SchemaFactory.createForClass(Repository);
