@@ -1,6 +1,8 @@
+// Modules and decorators
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
 import { Document } from "mongoose";
 
+// Mongoose schema for the Repository entity.
 @Schema()
 export class Repository extends Document {
   @Prop({ required: true, unique: true })
@@ -28,4 +30,5 @@ export class Repository extends Document {
   comment: string;
 }
 
+// Mongoose schema factory for the Repository entity.
 export const RepositorySchema = SchemaFactory.createForClass(Repository);

@@ -1,5 +1,4 @@
-// repository.module.ts
-
+// Modules and decorators
 import { Module } from "@nestjs/common";
 import { RepositoryService } from "./repository.service";
 import { RepositoryController } from "./repository.controller";
@@ -12,13 +11,14 @@ import { PullRequestSchema } from "./pull-requests/pull-requests.model";
 @Module({
   providers: [RepositoryService],
   imports: [
-    HttpModule,
+    HttpModule, // External module for making HTTP requests.
     MongooseModule.forFeature([
-      { name: "Repository", schema: RepositorySchema },
-      { name: "CommitSchema", schema: CommitSchema },
-      { name: "PullRequestSchema", schema: PullRequestSchema },
+      // Mongoose module to define the schemas for MongoDB.
+      { name: "Repository", schema: RepositorySchema }, // Repository schema.
+      { name: "CommitSchema", schema: CommitSchema }, // Commit schema.
+      { name: "PullRequestSchema", schema: PullRequestSchema }, // Pull request schema.
     ]),
   ],
   controllers: [RepositoryController],
 })
-export class RepositoryModule {}
+export class RepositoryModule {} // Definition of the Repository module.

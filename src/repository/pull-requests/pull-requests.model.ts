@@ -1,8 +1,7 @@
-// pull-request.model.ts
-
+// Modules and decorators
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { Document } from "mongoose";
 
+// Mongoose schema for the Pull-Request entity.
 @Schema()
 export class PullRequest {
   @Prop()
@@ -10,10 +9,6 @@ export class PullRequest {
 
   @Prop()
   title: string;
-
-  // Додайте інші поля пул-реквесту за потребою
 }
-
-export type PullRequestDocument = PullRequest & Document;
-
+// Mongoose schema for the Pull-Request entity
 export const PullRequestSchema = SchemaFactory.createForClass(PullRequest);

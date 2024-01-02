@@ -1,50 +1,49 @@
-// repository.controller.ts
-
-import { Controller, Post, Body, Get, Param, Put, Delete, HttpStatus, HttpException } from "@nestjs/common";
+// Modules and decorators
+import { Controller, Post, Body, Get, Param, Put, Delete, HttpStatus, HttpException, BadRequestException } from "@nestjs/common";
 import { RepositoryService } from "./repository.service";
 import { CreateRepositoriesDto } from "./dto/repository.dto";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 
+// Swagger tags for the entire controller
 @ApiTags("Repository Module")
 @Controller("repositories")
 export class RepositoryController {
   constructor(private readonly repositoryService: RepositoryService) {}
 
-  private results = [];
-
+  // Handling the request to process a list of repository links
   @Post()
   @ApiOperation({ summary: "Process data from list of links" })
   @ApiResponse({
     status: 200,
-    description: "All repository links is ok",
+    description: "All repository links are processed successfully",
   })
   @ApiResponse({
     status: 400,
-    description: "Empty list of links",
+    description: "Bad request. Invalid input data",
   })
   @ApiResponse({
     status: 500,
-    description: "Internal server error",
+    description: "Internal server error. An error occurred while processing the request",
   })
   async ProcessRepositoriesDto(@Body() dto: CreateRepositoriesDto) {
     try {
-      for (const link of dto.links) {
-        const result = await this.repositoryService.processRepository(link);
-        this.results.push(result);
-      }
-      return this.results;
+      const result = await this.repositoryService.processRepository(dto.links);
+      return result;
     } catch (error) {
-      throw new HttpException(
-        {
-          message: error.message,
-          error: "Bad Request",
-          statusCode: HttpStatus.BAD_REQUEST,
-        },
-        HttpStatus.BAD_REQUEST,
-      );
+      if (error instanceof BadRequestException) {
+        throw new HttpException( // Handling DTO validation errors
+          {
+            error: "Bad Request",
+            details: error.getResponse(), // Adding error details
+            statusCode: HttpStatus.BAD_REQUEST,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
     }
   }
 
+  // Handling the request to get all repositories
   @Get()
   @ApiOperation({ summary: "Get all repositories" })
   @ApiResponse({
@@ -66,6 +65,7 @@ export class RepositoryController {
     }));
   }
 
+  // Handling the request to get a repository by ID
   @Get(":id")
   @ApiOperation({ summary: "Get a repository by ID" })
   @ApiResponse({
@@ -80,6 +80,7 @@ export class RepositoryController {
     return this.repositoryService.getSingleRepository(id);
   }
 
+  // Handling the request to put a comment on a repository
   @Put(":id")
   @ApiOperation({ summary: "Put a comment on a repository" })
   @ApiResponse({
@@ -91,9 +92,10 @@ export class RepositoryController {
     description: "Repository not found",
   })
   putComment(@Param("id") id: string, @Body("comment") comment: string) {
-    this.repositoryService.putComment(id, comment);
+    return this.repositoryService.putComment(id, comment);
   }
 
+  // Handling the request to get commits by repository ID
   @Get("commits/:id")
   @ApiOperation({ summary: "Get commits by repository ID" })
   @ApiResponse({
@@ -108,6 +110,7 @@ export class RepositoryController {
     return this.repositoryService.getCommitsFromRepositoryById(id);
   }
 
+  // Handling the request to get pull requests by repository ID
   @Get("pullrequests/:id")
   @ApiOperation({ summary: "Get pull requests by repository ID" })
   @ApiResponse({
@@ -122,6 +125,7 @@ export class RepositoryController {
     return this.repositoryService.getPullRequestsFromRepositoryById(id);
   }
 
+  // Handling the request to remove a repository by ID
   @Delete(":id")
   @ApiOperation({ summary: "Remove a repository by ID" })
   @ApiResponse({
@@ -133,10 +137,10 @@ export class RepositoryController {
     description: "Repository not found",
   })
   removeRepo(@Param("id") id: string) {
-    this.repositoryService.deleteRepo(id);
-    return null;
+    return this.repositoryService.deleteRepo(id);
   }
 
+  // Handling the request to reload repositories
   @Post("reload-repo")
   @ApiOperation({ summary: "Reload repositories" })
   @ApiResponse({

@@ -1,40 +1,49 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+// Modules and decorators
+import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
 import { Repository } from "./repository.model";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model } from "mongoose";
+import { CreateRepositoriesDto } from "./dto/repository.dto";
+import { validate } from "class-validator";
 
 @Injectable()
 export class RepositoryService {
   constructor(
     private readonly httpService: HttpService,
     @InjectModel("Repository") private readonly repositoryModel: Model<Repository>,
-    @InjectModel("CommitSchema") private readonly commitModel: Model<any>, // Додайте модель для комітів
+    @InjectModel("CommitSchema") private readonly commitModel: Model<any>, // Add a model for commits
     @InjectModel("PullRequestSchema") private readonly pullRequestModel: Model<any>,
   ) {}
 
-  private repositoriesSet: Set<string> = new Set(); // Set для збереження унікальних значень посилань
+  private repositoriesSet: Set<string> = new Set(); // Set to store unique repository links
 
-  async processRepository(link: string | string[]): Promise<Repository | Repository[]> {
-    let linksArray: string[];
+  //Processes a list of repository links, retrieves data from GitHub API,
+  //and saves the repositories, commits, and pull requests in the database.
+  async processRepository(links: string[]): Promise<Repository[]> {
+    // Create DTO object
+    const createRepositoriesDto = new CreateRepositoriesDto();
+    createRepositoriesDto.links = links;
 
-    // Перевіряємо, чи передано одне посилання чи масив
-    if (Array.isArray(link)) {
-      linksArray = link;
-    } else {
-      linksArray = [link];
+    // Validate DTO
+    const validationErrors = await validate(createRepositoriesDto);
+
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        message: validationErrors.map(error => Object.values(error.constraints)),
+      });
     }
 
     const newRepositories: Repository[] = [];
 
-    for (const currentLink of linksArray) {
+    for (const currentLink of links) {
+      // If the link already exists, skip it and move to the next one
       if (this.repositoriesSet.has(currentLink)) {
-        // Якщо посилання вже існує, пропускаємо його та переходимо до наступного
         continue;
       }
 
-      const api_url = currentLink.replace("github.com", "api.github.com/repos");
+      const api_url = currentLink.replace("github.com", "api.github.com/repos"); //Get API link from original link
 
       try {
         const response = await firstValueFrom(this.httpService.get<any>(api_url, {}));
@@ -50,43 +59,44 @@ export class RepositoryService {
           comment: "",
         });
 
-        // Отримання комітів
+        // Get commits
         const commits = await this.countCommitsFromRepository(repositoryData.commits_url, repositoryData._id);
         repositoryData.commitsCount = commits.length;
 
+        //Get Pull-request
         const pullRequests = await this.countPullRequestsFromRepository(repositoryData.pullRequests_url, repositoryData._id);
         repositoryData.pullRequestsCount = pullRequests.length;
 
-        // Збереження репозиторію в базі даних
+        // Create and save the repository in the database
         const repository = await this.repositoryModel.create(repositoryData);
 
         await repositoryData.save();
 
-        this.repositoriesSet.add(currentLink); // Додаємо посилання до Set
+        this.repositoriesSet.add(currentLink); // Add the link to the Set
         newRepositories.push(repository);
       } catch (error) {
         if (error.response && error.response.status === 404) {
-          throw "Invalid repository link";
+          throw new NotFoundException("Invalid repository link");
         } else {
           console.error("Error processing repository:", error.response?.data || error.message);
-          throw "An error occurred while processing repository";
+          throw new BadRequestException("An error occurred while processing repository");
         }
       }
     }
 
-    return newRepositories.length === 1 ? newRepositories[0] : newRepositories;
+    return newRepositories;
   }
 
+  //Retrieves and saves commits from a given repository URL.
   async countCommitsFromRepository(commits_url: string, repositoryId: string): Promise<any[]> {
     const returnedCommits = await firstValueFrom(this.httpService.get<any[]>(commits_url));
 
     const commitsDataToSave = returnedCommits.data.map(commit => ({
       id: commit.id,
-      //message: commit.commit.message,
-      // інші поля, які вам потрібні
+      //message: commit.commit.message
     }));
 
-    // Збереження комітів у відповідній колекції
+    // Save commits in the corresponding collection
     await this.commitModel.create({
       repository: repositoryId,
       commits: commitsDataToSave,
@@ -95,16 +105,16 @@ export class RepositoryService {
     return commitsDataToSave;
   }
 
+  //Retrieves and saves pull requests from a given repository URL.
   async countPullRequestsFromRepository(pullRequests_url: string, repositoryId: string): Promise<any[]> {
     const returnedPullRequests = await firstValueFrom(this.httpService.get<any[]>(pullRequests_url));
 
     const pullRequestsDataToSave = returnedPullRequests.data.map(pullRequest => ({
       id: pullRequest.id,
-      //title: pullRequest.title,
-      // інші поля, які вам потрібні
+      //title: pullRequest.title
     }));
 
-    // Збереження пул-реквестів у відповідній колекції
+    // Save pull requests in the corresponding collection
     await this.pullRequestModel.create({
       repository: repositoryId,
       pullRequests: pullRequestsDataToSave,
@@ -113,104 +123,132 @@ export class RepositoryService {
     return pullRequestsDataToSave;
   }
 
+  //Retrieves all repositories from the database.
   async getRepositories() {
     const returnedRepo = await this.repositoryModel.find().exec();
     return returnedRepo;
   }
 
-  async getSingleRepository(id: string): Promise<Repository> {
+  //Retrieves a single repository by ID from the database.
+  async getSingleRepository(id: string) {
     try {
       const repository = await this.repositoryModel.findById(id).exec();
 
       if (!repository) {
-        throw new NotFoundException("Could not find the repository");
+        throw new NotFoundException("Repository not found");
       }
-
       return repository;
     } catch (error) {
-      console.error("Error fetching repository:", error);
-      throw "An error occurred while fetching the repository";
+      console.error("Error fetching repository", error);
+      throw new HttpException("An error occurred while fetching the repository", HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  async findRepository(): Promise<Repository> {
-    const repository = await this.repositoryModel.findOne().exec();
-
-    return repository;
-  }
-
+  //Add a comment to a repository and save it in the database.
   async putComment(id: string, comment: string): Promise<void> {
-    const repository = await this.repositoryModel.findById(id).exec();
+    try {
+      const repository = await this.repositoryModel.findById(id).exec();
 
-    if (!repository) {
-      throw new NotFoundException("Repository not found");
+      if (!repository) {
+        throw new NotFoundException("Repository not found");
+      }
+
+      // Add the comment to the repository
+      repository.comment = comment;
+      await repository.save();
+    } catch (error) {
+      console.error("Error putting comment on repository", error);
+      throw new HttpException("An error occurred while putting comment on repository", HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
-    repository.comment = comment;
-    await repository.save();
   }
 
+  // Retrieves commits from a repository by ID using the GitHub API.
   async getCommitsFromRepositoryById(id: string): Promise<any> {
-    const repository = await this.repositoryModel.findById(id).exec();
-
-    if (!repository) {
-      throw new NotFoundException("Repository not found");
-    }
-
     try {
+      const repository = await this.repositoryModel.findById(id).exec();
+
+      if (!repository) {
+        throw new NotFoundException("Repository not found");
+      }
+
       const response = await firstValueFrom(this.httpService.get<any>(repository.commits_url));
       return response.data;
     } catch (error) {
       console.error("Error fetching commits:", error.response?.data || error.message);
-      throw "An error occurred while fetching commits";
+
+      // If the error is related to repository not found, rethrow as NotFoundException.
+      if (error.response && error.response.status === 404) {
+        throw new NotFoundException("Repository not found");
+      }
+
+      // For other errors, throw a generic HttpException.
+      throw new HttpException("An error occurred while fetching commits", HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
+  // Retrieves pull requests from a repository by ID using the GitHub API.
   async getPullRequestsFromRepositoryById(id: string): Promise<any> {
-    const repository = await this.repositoryModel.findById(id).exec();
-
-    if (!repository) {
-      throw new NotFoundException("Repository not found");
-    }
-
     try {
+      const repository = await this.repositoryModel.findById(id).exec();
+
+      if (!repository) {
+        throw new NotFoundException("Repository not found");
+      }
+
       const response = await firstValueFrom(this.httpService.get<any>(repository.pullRequests_url));
       return response.data;
     } catch (error) {
       console.error("Error fetching pull requests:", error.response?.data || error.message);
-      throw "An error occurred while fetching pull requests";
+
+      // If the error is related to repository not found, rethrow as NotFoundException.
+      if (error.response && error.response.status === 404) {
+        throw new NotFoundException("Repository not found");
+      }
+
+      // For other errors, throw a generic HttpException.
+      throw new HttpException("An error occurred while fetching pull requests", HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  async deleteRepo(id: string): Promise<void> {
-    const result = await this.repositoryModel.deleteOne({ _id: id }).exec();
+  //Deletes a repository from the database by ID.
+  async deleteRepo(id: string) {
+    try {
+      const result = await this.repositoryModel.deleteOne({ _id: id }).exec();
 
-    if (result.deletedCount === 0) {
-      throw new NotFoundException("Repository not found");
+      if (result.deletedCount === 0) {
+        return "Repository not found";
+      } else if (result.deletedCount > 0) {
+        return "Repository successfully deleted";
+      } else {
+        return "Error deleting repository";
+      }
+    } catch (error) {
+      console.error("An error occurred while deleting repository:", error);
+      throw new HttpException("An error occurred while deleting repository", HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
+  //Deletes all repositories from the database and reprocesses them.
   async reloadRepo(): Promise<Repository[]> {
-    // Очистити поточні результати аналізу
+    // Clear current analysis results
     await this.repositoryModel.deleteMany({}).exec();
 
-    // Викликати аналіз для всіх репозиторіїв
+    // Call analysis for all repositories
     const repositories = await this.repositoryModel.find().exec();
 
     for (const repository of repositories) {
       try {
-        // Перевірити, чи репозиторій вже був аналізований
+        // Check if the repository has already been analyzed
         const existingRepository = await this.repositoryModel.findById(repository.id).exec();
         if (!existingRepository) {
-          await this.processRepository(repository.link);
+          await this.processRepository([repository.link]); // Change the argument to an array
         }
       } catch (error) {
         console.error(`Error analyzing repository ${repository.id}:`, error);
-        // Можливо, додайте обробку помилок або інші дії за потреби
       }
     }
 
-    // Повернути нові результати аналізу
+    // Return new analysis results
     return this.repositoryModel.find().exec();
   }
 }

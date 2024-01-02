@@ -1,5 +1,4 @@
-// commit.module.ts
-
+// Modules and decorators
 import { Module } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
 import { CommitSchema } from "./commits.model";

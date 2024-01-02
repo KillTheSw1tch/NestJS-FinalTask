@@ -1,8 +1,7 @@
-// commit.model.ts
-
+// Modules and decorators
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { Document } from "mongoose";
 
+// Mongoose schema for the Commits entity.
 @Schema()
 export class Commit {
   @Prop()
@@ -10,10 +9,7 @@ export class Commit {
 
   @Prop()
   message: string;
-
-  // Додайте інші поля коміту за потребою
 }
 
-export type CommitDocument = Commit & Document;
-
+// Mongoose schema for the Commits entity.
 export const CommitSchema = SchemaFactory.createForClass(Commit);
